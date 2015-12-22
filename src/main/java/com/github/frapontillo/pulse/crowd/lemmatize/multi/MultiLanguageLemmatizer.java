@@ -30,10 +30,10 @@ import java.util.List;
 
 /**
  * A multi-language implementation for {@link IPlugin<Message>}.
- * <p/>
+ * <p>
  * When a {@link Message} goes through the lemmatization process, the concrete implementation is
  * searched for in the following (ordered) locations:
- * <p/>
+ * <p>
  * <ol>
  * <li>In the internal {@link HashMap} {@link MultiLanguageLemmatizer#lemmatizerMap}, starting from
  * the language</li>
@@ -41,7 +41,7 @@ import java.util.List;
  * <li>Finally, the Stanford-CoreNLP implementation is used if no other is found (note that
  * Stanford-CoreNLP may not support every language)</li>
  * </ol>
- * <p/>
+ * <p>
  * A class may override {@link MultiLanguageLemmatizer} in order to provide some different default
  * implementation (instead of Stanford-CoreNLP) or in order to hardcode language-specific
  * implementation in the internal {@link MultiLanguageLemmatizer#lemmatizerMap}.
@@ -52,7 +52,7 @@ public class MultiLanguageLemmatizer extends IPlugin<Message, Message, VoidConfi
     public final static String PLUGIN_NAME = "lemmatizer-multi";
     private final static String LEMMATIZER_WILDCARD = "*";
     private final HashMap<String, String> lemmatizerMap;
-    private final HashMap<String, IPlugin<Message, Message, VoidConfig>> lemmatizers;
+    private final HashMap<String, IPlugin> lemmatizers;
 
     public MultiLanguageLemmatizer() {
         lemmatizerMap = new HashMap<>();
@@ -74,6 +74,10 @@ public class MultiLanguageLemmatizer extends IPlugin<Message, Message, VoidConfi
         return PLUGIN_NAME;
     }
 
+    @Override public IPlugin<Message, Message, VoidConfig> getInstance() {
+        return new MultiLanguageLemmatizer();
+    }
+
     @Override public VoidConfig getNewParameter() {
         return new VoidConfig();
     }
@@ -82,7 +86,7 @@ public class MultiLanguageLemmatizer extends IPlugin<Message, Message, VoidConfi
         return new ILemmatizerOperator(this) {
             @Override public List<Token> lemmatizeMessageTokens(Message message) {
                 // find or instantiate the lemmatizer
-                IPlugin<Message, Message, VoidConfig> lemmatizer = getLemmatizerForMessage(message);
+                IPlugin lemmatizer = getLemmatizerForMessage(message);
                 if (lemmatizer instanceof ISingleablePlugin) {
                     return ((ISingleablePlugin<Message, VoidConfig>) lemmatizer)
                             .singleItemProcess(message).getTokens();
@@ -101,12 +105,12 @@ public class MultiLanguageLemmatizer extends IPlugin<Message, Message, VoidConfi
      * @return The best available {@link IPlugin} instance to perform the lemmatization for the
      * message.
      */
-    private IPlugin<Message, Message, VoidConfig> getLemmatizerForMessage(Message message) {
-        IPlugin<Message, Message, VoidConfig> lemmatizer;
+    private IPlugin getLemmatizerForMessage(Message message) {
+        IPlugin lemmatizer;
         String lang = message.getLanguage();
-        // find or instantiate the lemmatizer
+        // if the lemmatizer doesn't exist
         if ((lemmatizer = lemmatizers.get(lang)) == null) {
-            // look for the specific implementation in the map
+            // look for the specific implementation name in the map
             String lemmatizerIdentifier = lemmatizerMap.get(lang);
             // if there is no implementation, use the default "lemmatizer-LANG" format
             if (lemmatizerIdentifier == null) {
@@ -114,14 +118,14 @@ public class MultiLanguageLemmatizer extends IPlugin<Message, Message, VoidConfi
             }
             // look for the lemmatizer implementation in the SPI
             try {
-                lemmatizer = PluginProvider.getPlugin(lemmatizerIdentifier);
+                lemmatizer = PluginProvider.getPlugin(lemmatizerIdentifier).getInstance();
             } catch (ClassNotFoundException ignored) {
             }
-            // if the lemmatizer isn't provided by the SPI
-            // use the one provided for every language, as "*"
+            // if the lemmatizer doesn't exist at this point
             if (lemmatizer == null) {
                 try {
-                    lemmatizer = PluginProvider.getPlugin(lemmatizerMap.get(LEMMATIZER_WILDCARD));
+                    // use the one provided for every language, as "*"
+                    lemmatizer = PluginProvider.getPlugin(lemmatizerMap.get(LEMMATIZER_WILDCARD)).getInstance();
                 } catch (ClassNotFoundException ignored) {
                 }
             }
